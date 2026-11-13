@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -340,7 +340,7 @@ const PLAYER_CORE = sfShape({ m: 4, n1: 2, n2: 2, n3: 2, a: 1, b: 1, phase: 0, s
 
 // ---------- Audio (synthesised, no assets) ----------
 let actx = null, muted = false, noiseBuf = null;
-try { muted = localStorage.getItem('sfs-muted') === '1'; } catch (e) {}
+try { muted = localStorage.getItem('superformula-squadron:muted') === '1'; } catch (e) {}
 function initAudio() {
   if (!actx) {
     try {
@@ -452,7 +452,7 @@ let state = 'title';
 let player = null;
 let G = null;
 let best = 0;
-try { best = parseInt(localStorage.getItem('sfs-best') || '0', 10) || 0; } catch (e) {}
+try { best = parseInt(localStorage.getItem('superformula-squadron:best') || '0', 10) || 0; } catch (e) {}
 const keys = {};
 let stars = [];
 
@@ -1296,7 +1296,7 @@ function pause() { if (state === 'play') { touch.id = null; setState('paused'); 
 function resume() { if (state === 'paused') { setState('play'); last = performance.now(); } }
 function gameOver() {
   const isBest = G.score > best;
-  if (isBest) { best = G.score; try { localStorage.setItem('sfs-best', String(best)); } catch (e) {} }
+  if (isBest) { best = G.score; try { localStorage.setItem('superformula-squadron:best', String(best)); } catch (e) {} }
   $('overTitle').textContent = isBest && best > 0 ? 'NEW BEST!' : 'SQUADRON LOST';
   $('overStats').innerHTML =
     'Score <b>' + G.score.toLocaleString() + '</b><br>' +
@@ -1316,7 +1316,7 @@ $('btnTitle').addEventListener('click', () => { G = null; setState('title'); });
 function refreshMute() { $('btnMute').textContent = muted ? '✕' : '♪'; $('btnMute').setAttribute('aria-pressed', String(!muted)); }
 $('btnMute').addEventListener('click', () => {
   muted = !muted; refreshMute();
-  try { localStorage.setItem('sfs-muted', muted ? '1' : '0'); } catch (e) {}
+  try { localStorage.setItem('superformula-squadron:muted', muted ? '1' : '0'); } catch (e) {}
   initAudio();
 });
 
