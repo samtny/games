@@ -65,7 +65,6 @@
     width: 40px; height: 40px; padding: 0; font-size: 16px; border-radius: 10px;
     background: rgba(5, 6, 15, 0.5); border-color: rgba(138, 147, 192, 0.5);
   }
-  a.back { color: var(--dim); font-size: 13px; text-decoration: none; }
   .board { list-style: none; margin: 0; padding: 0; width: 100%; max-width: 280px; box-sizing: border-box; font-size: 14px; line-height: 1.55; }
   .board li { display: flex; gap: 10px; padding: 0 8px; border-radius: 6px; }
   .board li.me { background: rgba(108, 240, 255, 0.16); }
@@ -85,7 +84,6 @@
   #initials:focus { outline: 2px solid var(--accent2); outline-offset: 2px; }
   #initialsForm button { width: auto; flex: 0 0 auto; }
   button:disabled { opacity: 0.5; }
-  a.back:hover { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -109,7 +107,6 @@
     </div>
     <button id="btnScores">High scores</button>
     <div class="hint">Drag anywhere to fly — your guns fire automatically.<br>Desktop: arrow keys / WASD, P to pause.<br>Best: <span id="bestLabel">0</span></div>
-    <a class="back" href="../">← all games</a>
   </div>
 </div>
 
