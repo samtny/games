@@ -66,6 +66,25 @@
     background: rgba(5, 6, 15, 0.5); border-color: rgba(138, 147, 192, 0.5);
   }
   a.back { color: var(--dim); font-size: 13px; text-decoration: none; }
+  .board { list-style: none; margin: 0; padding: 0; width: 100%; max-width: 280px; box-sizing: border-box; font-size: 14px; line-height: 1.55; }
+  .board li { display: flex; gap: 10px; padding: 0 8px; border-radius: 6px; }
+  .board li.me { background: rgba(108, 240, 255, 0.16); }
+  .board .rk { color: var(--dim); width: 2.2em; text-align: right; }
+  .board .nm { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--accent2); letter-spacing: 0.12em; }
+  .board .sc { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .board .empty { justify-content: center; color: var(--dim); }
+  .boardHead { color: var(--dim); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
+  #scoreEntry { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(320px, 100%); }
+  #initialsForm { display: flex; gap: 10px; width: 100%; }
+  #initials {
+    font: 700 24px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.35em; text-align: center; text-transform: uppercase;
+    width: 0; flex: 1; min-width: 0; padding: 8px 4px 8px 12px; border-radius: 12px; box-sizing: border-box;
+    color: var(--accent2); background: rgba(5, 6, 15, 0.6); border: 1.5px solid rgba(255, 108, 208, 0.6);
+    -webkit-user-select: text; user-select: text;
+  }
+  #initials:focus { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  #initialsForm button { width: auto; flex: 0 0 auto; }
+  button:disabled { opacity: 0.5; }
   a.back:hover { color: var(--fg); }
 </style>
 </head>
@@ -88,6 +107,7 @@
       <button id="btnReroll">New seed</button>
       <button id="btnDaily">Daily</button>
     </div>
+    <button id="btnScores">High scores</button>
     <div class="hint">Drag anywhere to fly — your guns fire automatically.<br>Desktop: arrow keys / WASD, P to pause.<br>Best: <span id="bestLabel">0</span></div>
     <a class="back" href="../">← all games</a>
   </div>
@@ -101,9 +121,25 @@
   </div>
 </div>
 
+<div id="boardScreen" class="overlay center hidden">
+  <h2>HIGH SCORES</h2>
+  <ol class="board" id="fullBoard"></ol>
+  <div class="btns">
+    <button class="primary" id="btnBoardBack">BACK</button>
+  </div>
+</div>
+
 <div id="overScreen" class="overlay center hidden">
   <h2 id="overTitle">SQUADRON LOST</h2>
   <div class="stats" id="overStats"></div>
+  <div id="scoreEntry" class="hidden">
+    <form id="initialsForm" autocomplete="off">
+      <input id="initials" maxlength="3" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="AAA" aria-label="Your initials (3 letters)">
+      <button type="submit" id="btnSaveScore">SAVE</button>
+    </form>
+  </div>
+  <div class="hint" id="scoreMsg"></div>
+  <div style="width: min(280px, 100%)"><div class="boardHead">Top squadrons</div><ol class="board" id="overBoard"></ol></div>
   <div class="btns">
     <button class="primary" id="btnRetry">FLY AGAIN</button>
     <button id="btnTitle">Title</button>
@@ -389,6 +425,67 @@ const sfx = {
   tink() { tone(1400, 0.03, 'square', 0.015); },
 };
 function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+// ---- Tuff high scores v1 (mode: scores_and_initials). Paste once; don't edit. ----
+const Scores = (() => {
+  const SLUG = 'superformula-squadron', ORDER = 'high', INITIALS = true;
+  const p = location.pathname;
+  const env = p.startsWith('/_review/') ? 'sandbox' : p.startsWith('/' + SLUG + '/') ? 'live' : 'mock';
+  let run = null, mockBoards = {};
+  function fail(code, message) { return Object.assign(new Error(message), { code }); }
+  async function api(path, opts) {
+    const r = await fetch('/api/scores/' + SLUG + path, opts);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw fail(j.error || 'http_' + r.status, j.message || 'Score service error');
+    return j;
+  }
+  async function sha256(s) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  function badge() {
+    if (env !== 'mock' || document.getElementById('tuff-dev-badge')) return;
+    const d = document.createElement('div');
+    d.id = 'tuff-dev-badge';
+    d.textContent = 'DEV MODE: pretend scores';
+    d.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;font:600 11px system-ui;padding:3px 6px;border-radius:6px;background:#ff6b35;color:#fff;opacity:.85;pointer-events:none';
+    document.body.appendChild(d);
+  }
+  function checkName(name) {
+    if (!INITIALS) return '';
+    const n = String(name || '').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(n)) throw fail('name_invalid', 'Initials must be exactly 3 letters A–Z.');
+    return n;
+  }
+  return {
+    env,
+    usesInitials: INITIALS,
+    async start(board = 'default') {
+      badge();
+      if (env === 'mock') { run = { board, t: Date.now() }; return; }
+      const r = await api('/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ board, env }) });
+      run = { board, run: r.run };
+    },
+    async submit(score, name) {
+      if (!run) throw fail('no_run', 'Call Scores.start() when the game begins.');
+      const r = run; run = null;
+      const n = checkName(name);
+      if (env === 'mock') {
+        const list = (mockBoards[r.board] = mockBoards[r.board] || []);
+        list.push({ score, name: n || undefined, at: new Date().toISOString() });
+        list.sort((a, b) => (ORDER === 'high' ? b.score - a.score : a.score - b.score));
+        return { ok: true, rank: list.findIndex((e) => e.score === score) + 1 };
+      }
+      const proof = await sha256(r.run + '|' + score + '|' + n);
+      return api('', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ run: r.run, score, name: n, proof }) });
+    },
+    async top(limit = 10, board = 'default') {
+      if (env === 'mock') return (mockBoards[board] || []).slice(0, limit).map((e, i) => ({ rank: i + 1, ...e }));
+      return (await api('?board=' + encodeURIComponent(board) + '&env=' + env + '&limit=' + limit)).scores;
+    },
+  };
+})();
+// ---- end Tuff high scores ----
 
 // ---------- Seed management ----------
 let seedStr = '', seedNum = 0, FAMILIES = [], bossCache = new Map();
@@ -1267,7 +1364,10 @@ document.addEventListener('touchmove', e => e.preventDefault(), { passive: false
 document.addEventListener('gesturestart', e => e.preventDefault());
 
 window.addEventListener('keydown', e => {
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT') return; // typing initials
   keys[e.code] = true;
+  if ((e.code === 'Enter' || e.code === 'Space') && tag === 'BUTTON') return; // let the focused button handle it
   if (e.code === 'KeyP' || e.code === 'Escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); }
   if ((e.code === 'Enter' || e.code === 'Space') && (state === 'title' || state === 'over')) { e.preventDefault(); start(); }
   if (e.code.startsWith('Arrow')) e.preventDefault();
@@ -1284,12 +1384,90 @@ function setState(s) {
   show('title', s === 'title');
   show('pauseScreen', s === 'paused');
   show('overScreen', s === 'over');
+  show('boardScreen', s === 'board');
   show('hudBtns', s === 'play' || s === 'paused');
   $('bestLabel').textContent = best.toLocaleString();
   titleBand = null;
 }
+// ---------- High scores ----------
+let scoreRun = null;      // promise for the current run's Scores.start()
+let pendingScore = null;  // score waiting for initials, or null
+function beginScoreRun() {
+  pendingScore = null;
+  scoreRun = Scores.start().then(() => true, () => false);
+}
+function scoreMsg(text) { $('scoreMsg').textContent = text || ''; }
+async function loadBoard(listId, limit, mine) {
+  const ol = $(listId);
+  ol.innerHTML = '<li class="empty">Loading…</li>';
+  let rows;
+  try { rows = await Scores.top(limit); }
+  catch (e) { ol.innerHTML = '<li class="empty">Scoreboard unavailable right now.</li>'; return; }
+  ol.innerHTML = '';
+  if (!rows || !rows.length) { ol.innerHTML = '<li class="empty">No scores yet — be the first!</li>'; return; }
+  for (const r of rows) {
+    const li = document.createElement('li');
+    if (mine && r.rank === mine) li.className = 'me';
+    const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = r.rank + '.';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name || '???';
+    const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = Number(r.score).toLocaleString();
+    li.append(rk, nm, sc);
+    ol.appendChild(li);
+  }
+}
+async function offerScore(score) {
+  show('scoreEntry', false);
+  scoreMsg('');
+  loadBoard('overBoard', 5);
+  if (!scoreRun || score <= 0) return;
+  const run = scoreRun;
+  const ok = await run;
+  if (state !== 'over' || run !== scoreRun) return;
+  if (!ok) { scoreMsg('Scoreboard offline — score not saved.'); return; }
+  pendingScore = score;
+  let saved = '';
+  try { saved = localStorage.getItem('superformula-squadron:initials') || ''; } catch (e) {}
+  const inp = $('initials');
+  inp.value = saved;
+  $('btnSaveScore').disabled = false;
+  show('scoreEntry', true);
+  scoreMsg('Enter your initials for the scoreboard');
+  if (!matchMedia('(pointer: coarse)').matches) { inp.focus(); inp.select(); }
+}
+async function saveScore(e) {
+  e.preventDefault();
+  if (pendingScore === null) return;
+  const inp = $('initials');
+  const name = inp.value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(name)) { scoreMsg('Initials need exactly 3 letters A–Z.'); inp.focus(); return; }
+  const score = pendingScore;
+  pendingScore = null;
+  $('btnSaveScore').disabled = true;
+  inp.blur();
+  scoreMsg('Saving…');
+  try {
+    const r = await Scores.submit(score, name);
+    try { localStorage.setItem('superformula-squadron:initials', name); } catch (err) {}
+    show('scoreEntry', false);
+    scoreMsg(r && r.rank ? 'Saved! You placed #' + r.rank + '.' : 'Saved — not on the board this time.');
+    loadBoard('overBoard', 5, r && r.rank);
+  } catch (err) {
+    show('scoreEntry', false);
+    if (err.code === 'name_not_allowed') scoreMsg('Those initials aren\'t allowed, so this score wasn\'t saved. Try different ones next time!');
+    else scoreMsg('Score not saved: ' + (err.message || 'something went wrong'));
+  }
+}
+$('initials').addEventListener('input', e => {
+  const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  if (v !== e.target.value) e.target.value = v;
+});
+$('initialsForm').addEventListener('submit', saveScore);
+$('btnScores').addEventListener('click', () => { setState('board'); loadBoard('fullBoard', 10); });
+$('btnBoardBack').addEventListener('click', () => setState('title'));
+
 function start() {
   initAudio();
+  beginScoreRun();
   newGame();
   makeStars();
   setState('play');
@@ -1305,6 +1483,7 @@ function gameOver() {
     'Reached wave <b>' + G.wave + '</b> · ' + G.kills + ' kills<br>' +
     'Sector <b>' + seedStr + '</b> · Best ' + best.toLocaleString();
   setState('over');
+  offerScore(Math.floor(G.score));
 }
 
 $('btnStart').addEventListener('click', start);
